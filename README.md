@@ -2,6 +2,8 @@
 
 > A smol MCP server for the complete Cloudflare API.
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/mattzcarey/cloudflare-mcp)
+
 Uses codemode to avoid dumping too much context to your agent.
 
 ## The Problem
@@ -10,11 +12,7 @@ The Cloudflare OpenAPI spec is **2.3 million tokens** in JSON format. Even compr
 
 This server solves the problem by using **code execution** in a [codemode](https://blog.cloudflare.com/code-mode/) pattern - the spec lives on the server, and only the results of queries are returned to the agent.
 
-## Two MCP Servers
-
-There are currently two MCP servers available. I'm running some evals to determine the best approach.
-
-### 1. Search + Execute (Default: `/`)
+## Tools
 
 Two tools where the agent writes code to search the spec and execute API calls. Akin to [ACI.dev's MCP server](https://github.com/aipotheosis-labs/aci) but with added codemode.
 
@@ -35,64 +33,22 @@ Agent                         MCP Server
   │◄──[API response]──────────────│
 ```
 
-### 2. Agent Mode (`/agent`)
-
-Single tool that accepts natural language. The MCP server uses an LLM to generate the code internally. Sentry do something similar with their Agent mode in their [MCP server](https://x.com/zeeg/status/1983292413176340796?s=20).
-
-| Tool         | Description                                                                    |
-| ------------ | ------------------------------------------------------------------------------ |
-| `cloudflare` | Describe what you want in natural language, server generates and executes code |
-
-**Token usage:** The ~50k endpoint summary is sent to the internal LLM (gpt-4o-mini), not your main agent. Your agent only sees the final result.
-
-```
-Agent                         MCP Server                    OpenAI
-  │                               │                            │
-  ├──cloudflare({request})───────►│                            │
-  │                               ├──generate code────────────►│
-  │                               │◄──code─────────────────────│
-  │                               │                            │
-  │                               │ Execute code against API   │
-  │◄──[API response]──────────────│                            │
-```
-
 ## Setup
 
-```bash
-npm install
-npm run build:spec   # Generate types from OpenAPI spec
-```
+### Create API Token
 
-### Secrets
-
-```bash
-# Required for /agent mode only
-wrangler secret put OPENAI_API_KEY
-```
-
-### Deploy
-
-```bash
-npm run deploy
-```
+Create a [Cloudflare API token](https://dash.cloudflare.com/profile/api-tokens) with the permissions you need.
 
 ### Add to Claude Code
 
 ```bash
+export CLOUDFLARE_API_TOKEN="your-token-here"
+
 claude mcp add --transport http cloudflare-api https://cloudflare-mcp.mattzcarey.workers.dev/mcp \
   --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 ```
 
-For Agent mode:
-
-```bash
-claude mcp add --transport http cloudflare-api-agent https://cloudflare-mcp.mattzcarey.workers.dev/agent/mcp \
-  --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
-```
-
 ## Usage
-
-### Search + Execute Mode
 
 ```javascript
 // 1. Search for endpoints
@@ -123,15 +79,6 @@ execute({
 });
 ```
 
-### Agent Mode
-
-```javascript
-cloudflare({
-  request: "List all my Workers scripts",
-  account_id: "your-account-id",
-});
-```
-
 ## Token Comparison
 
 | Content                       | Tokens     |
@@ -145,9 +92,8 @@ cloudflare({
 
 ```
 src/
-├── index.ts      # Routes /agent and /
-├── server.ts     # Search + Execute mode
-├── agent.ts      # Agent mode (LLM code generation)
+├── index.ts      # MCP server entry point
+├── server.ts     # Search + Execute tools
 ├── executor.ts   # Isolated worker code execution
 ├── truncate.ts   # Response truncation (10k token limit)
 └── data/
@@ -157,3 +103,10 @@ src/
 ```
 
 Code execution uses Cloudflare's Worker Loader API to run generated code in isolated workers, following the [codemode pattern](https://github.com/cloudflare/agents/tree/main/packages/codemode).
+
+## Development
+
+```bash
+npm i
+npm run deploy
+```

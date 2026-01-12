@@ -33,7 +33,6 @@ const ACCOUNT_ID = ${JSON.stringify(accountId)};
 
 export default class CodeExecutor extends WorkerEntrypoint {
   async evaluate(apiToken) {
-    // Create cloudflare client in a closure so apiToken is not accessible to user code
     const createClient = (token) => ({
       async request(options) {
         const { method, path, query, body } = options;
@@ -68,7 +67,6 @@ export default class CodeExecutor extends WorkerEntrypoint {
     });
 
     try {
-      // These are the only variables accessible to user code
       const cloudflare = createClient(apiToken);
       const accountId = ACCOUNT_ID;
 

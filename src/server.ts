@@ -64,7 +64,12 @@ declare const spec: {
 };
 `;
 
-export function createServer(env: Env): McpServer {
+const extractToken = (authHeader: string) => {
+  const match = authHeader.match(/Bearer\s+(\S+)/);
+  return match ? match[1] : null;
+};
+
+export function createServer(env: Env, authHeader: string): McpServer {
   const server = new McpServer({
     name: "cloudflare-api",
     version: "0.1.0",
@@ -103,7 +108,11 @@ async () => {
   return spec.paths['/accounts/{account_id}/workers/scripts'];
 }`,
       inputSchema: {
-        code: z.string().describe("JavaScript async arrow function to search the OpenAPI spec"),
+        code: z
+          .string()
+          .describe(
+            "JavaScript async arrow function to search the OpenAPI spec"
+          ),
       },
     },
     async ({ code }) => {
@@ -113,7 +122,8 @@ async () => {
           content: [{ type: "text", text: truncateResponse(result) }],
         };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `Error: ${errorMessage}` }],
           isError: true,
@@ -142,14 +152,20 @@ async () => {
 }`,
       inputSchema: {
         code: z.string().describe("JavaScript async arrow function to execute"),
-        account_id: z.string().describe("Your Cloudflare account ID (run `npx wrangler whoami` to see available accounts)"),
+        account_id: z
+          .string()
+          .describe(
+            "Your Cloudflare account ID (run `npx wrangler whoami` to see available accounts)"
+          ),
       },
     },
-    async ({ code, account_id }, { authInfo }) => {
+    async ({ code, account_id }) => {
       try {
-        const apiToken = authInfo?.token;
+        const apiToken = extractToken(authHeader);
         if (!apiToken) {
-          throw new Error("Authorization required: provide a Cloudflare API token in the Authorization header");
+          throw new Error(
+            "Authorization required: provide a Cloudflare API token in the Authorization header"
+          );
         }
 
         const result = await executeCode(code, account_id, apiToken);
@@ -157,7 +173,8 @@ async () => {
           content: [{ type: "text", text: truncateResponse(result) }],
         };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `Error: ${errorMessage}` }],
           isError: true,
