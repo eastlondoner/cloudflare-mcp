@@ -19,12 +19,38 @@ Bearer Token: Your [Cloudflare API Token](https://dash.cloudflare.com/profile/ap
 
 #### Claude Code
 
+<details>
+<summary>CLI</summary>
+
 ```bash
 export CLOUDFLARE_API_TOKEN="your-token-here"
 
 claude mcp add --transport http cloudflare-api https://cloudflare-mcp.mattzcarey.workers.dev/mcp \
   --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 ```
+
+</details>
+
+#### OpenCode
+
+<details>
+<summary>opencode.json</summary>
+
+```json
+{
+  "mcp": {
+    "cloudflare-api": {
+      "type": "remote",
+      "url": "https://cloudflare-mcp.mattzcarey.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_CLOUDFLARE_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+</details>
 
 ## The Problem
 
