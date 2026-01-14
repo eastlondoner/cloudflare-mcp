@@ -166,7 +166,7 @@ async () => {
         account_id: z
           .string()
           .describe(
-            "Your Cloudflare account ID (run `npx wrangler whoami` to see available accounts)"
+            "Your Cloudflare account ID (call GET /accounts to list available accounts)"
           ),
       },
     },
