@@ -136,28 +136,13 @@ ${CLOUDFLARE_TYPES}
 
 Your code must be an async arrow function that returns the result.
 
-Example:
+Example: Worker with bindings (requires multipart/form-data):
 async () => {
-  const response = await cloudflare.request({
-    method: "GET",
-    path: \`/accounts/\${accountId}/workers/scripts\`
-  });
-  return response.result;
-}
-
-// Upload a Worker script (service worker syntax)
-async () => {
-  const workerCode = \`addEventListener('fetch', event => {
-    event.respondWith(new Response('Hello World!'));
-  });\`;
-
-  return await cloudflare.request({
-    method: "PUT",
-    path: \`/accounts/\${accountId}/workers/scripts/my-worker\`,
-    body: workerCode,
-    contentType: "application/javascript",
-    rawBody: true
-  });
+  const code = \`addEventListener('fetch', e => e.respondWith(MY_KV.get('key').then(v => new Response(v || 'none'))));\`;
+  const metadata = { body_part: "script", bindings: [{ type: "kv_namespace", name: "MY_KV", namespace_id: "your-kv-id" }] };
+  const b = \`--F\${Date.now()}\`;
+  const body = [\`--\${b}\`, 'Content-Disposition: form-data; name="metadata"', 'Content-Type: application/json', '', JSON.stringify(metadata), \`--\${b}\`, 'Content-Disposition: form-data; name="script"', 'Content-Type: application/javascript', '', code, \`--\${b}--\`].join("\\r\\n");
+  return cloudflare.request({ method: "PUT", path: \`/accounts/\${accountId}/workers/scripts/my-worker\`, body, contentType: \`multipart/form-data; boundary=\${b}\`, rawBody: true });
 }`;
 
   if (accountId) {
