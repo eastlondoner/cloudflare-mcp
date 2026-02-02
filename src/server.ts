@@ -143,6 +143,12 @@ async () => {
   const b = \`--F\${Date.now()}\`;
   const body = [\`--\${b}\`, 'Content-Disposition: form-data; name="metadata"', 'Content-Type: application/json', '', JSON.stringify(metadata), \`--\${b}\`, 'Content-Disposition: form-data; name="script"', 'Content-Type: application/javascript', '', code, \`--\${b}--\`].join("\\r\\n");
   return cloudflare.request({ method: "PUT", path: \`/accounts/\${accountId}/workers/scripts/my-worker\`, body, contentType: \`multipart/form-data; boundary=\${b}\`, rawBody: true });
+}
+
+Example: GraphQL query:
+async () => {
+  const query = \`{ viewer { accounts(filter: { accountTag: "\${accountId}" }) { zones { zoneTag name } } } }\`;
+  return cloudflare.request({ method: "POST", path: "/graphql", body: { query } });
 }`;
 
   if (accountId) {
