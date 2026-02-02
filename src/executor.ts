@@ -10,17 +10,70 @@ interface SearchExecutorEntrypoint {
   evaluate(): Promise<{ result: unknown; err?: string; stack?: string }>;
 }
 
+// Simple hash function for cache keys
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString(36);
+}
+
+// Simple LRU cache for workers to prevent memory exhaustion
+class WorkerCache<T> {
+  private cache = new Map<string, T>();
+  private maxSize: number;
+
+  constructor(maxSize: number) {
+    this.maxSize = maxSize;
+  }
+
+  get(key: string): T | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // Move to end (most recently used)
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: string, value: T): void {
+    // If key exists, delete it first to update position
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+    // Evict oldest if at capacity
+    while (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
+    this.cache.set(key, value);
+  }
+}
+
 export function createCodeExecutor(env: Env) {
   const apiBase = env.CLOUDFLARE_API_BASE;
+  // LRU cache limits total workers to prevent memory exhaustion
+  const workerCache = new WorkerCache<ReturnType<typeof env.LOADER.get>>(20);
 
   return async (
     code: string,
     accountId: string,
     apiToken: string
   ): Promise<unknown> => {
-    const workerId = `cloudflare-api-${crypto.randomUUID()}`;
+    // Cache key includes both accountId and code hash to reuse workers for identical requests
+    const codeHash = simpleHash(code);
+    const cacheKey = `${accountId}:${codeHash}`;
+    let worker = workerCache.get(cacheKey);
 
-    const worker = env.LOADER.get(workerId, () => ({
+    if (!worker) {
+      const workerId = `cloudflare-api-${cacheKey}`;
+      worker = env.LOADER.get(workerId, () => ({
       compatibilityDate: "2026-01-12",
       compatibilityFlags: ["nodejs_compat"],
       mainModule: "worker.js",
@@ -100,8 +153,10 @@ export default class CodeExecutor extends WorkerEntrypoint {
   }
 }
         `,
-      },
-    }));
+        },
+      }));
+      workerCache.set(cacheKey, worker);
+    }
 
     const entrypoint =
       worker.getEntrypoint() as unknown as CodeExecutorEntrypoint;
@@ -117,11 +172,17 @@ export default class CodeExecutor extends WorkerEntrypoint {
 
 export function createSearchExecutor(env: Env) {
   const specJson = JSON.stringify(spec);
+  // LRU cache for search workers - smaller limit since each includes the 44MB spec
+  const workerCache = new WorkerCache<ReturnType<typeof env.LOADER.get>>(5);
 
   return async (code: string): Promise<unknown> => {
-    const workerId = `cloudflare-search-${crypto.randomUUID()}`;
+    // Cache by code hash to reuse workers for identical queries
+    const codeHash = simpleHash(code);
+    let worker = workerCache.get(codeHash);
 
-    const worker = env.LOADER.get(workerId, () => ({
+    if (!worker) {
+      const workerId = `cloudflare-search-${codeHash}`;
+      worker = env.LOADER.get(workerId, () => ({
       compatibilityDate: "2026-01-12",
       compatibilityFlags: ["nodejs_compat"],
       mainModule: "worker.js",
@@ -142,8 +203,10 @@ export default class SearchExecutor extends WorkerEntrypoint {
   }
 }
         `,
-      },
-    }));
+        },
+      }));
+      workerCache.set(codeHash, worker);
+    }
 
     const entrypoint =
       worker.getEntrypoint() as unknown as SearchExecutorEntrypoint;

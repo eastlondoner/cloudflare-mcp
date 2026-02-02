@@ -62,16 +62,35 @@ function jsonError(message: string, status: number = 401): Response {
   });
 }
 
+function isLocalhostHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+}
+
+function getApiTokenFromEnv(env: Env): string | null {
+  // CLOUDFLARE_API_TOKEN is commonly provided via .env in local dev, but may not
+  // be present in generated Wrangler types, so we access it safely.
+  const token = (env as unknown as Record<string, unknown>)["CLOUDFLARE_API_TOKEN"];
+  return typeof token === "string" && token.length > 0 ? token : null;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const { hostname } = new URL(request.url);
     const authHeader = request.headers.get("Authorization");
-    if (!authHeader) {
-      return jsonError("Authorization header required");
+
+    // Try to get token from header first, then fall back to env on localhost
+    let token: string | null = null;
+    if (authHeader) {
+      token = extractToken(authHeader);
+      if (!token) {
+        return jsonError("Invalid Authorization header format");
+      }
+    } else if (isLocalhostHostname(hostname)) {
+      token = getApiTokenFromEnv(env);
     }
 
-    const token = extractToken(authHeader);
     if (!token) {
-      return jsonError("Invalid Authorization header format");
+      return jsonError("Authorization header required");
     }
 
     const verification = await verifyToken(token);
@@ -83,6 +102,8 @@ export default {
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
+      // Help clients reconnect gracefully after SSE stream closes
+      retryInterval: 1000,
     });
 
     await server.connect(transport);

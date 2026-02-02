@@ -175,6 +175,54 @@ src/
 
 Code execution uses Cloudflare's Worker Loader API to run generated code in isolated workers, following the [codemode pattern](https://github.com/cloudflare/agents/tree/main/packages/codemode).
 
+## Stateless Architecture
+
+This server runs in **stateless mode**, which is the appropriate design for Cloudflare Workers and other serverless environments. Each HTTP request creates a fresh MCP transport that closes after responding.
+
+### How it works
+
+- **POST /mcp** - Tool calls (search, execute) are handled as request-response
+- **GET /mcp** - SSE polling for server-initiated notifications
+- No session state is maintained between requests
+- Authentication is handled per-request via Bearer token
+
+### Trade-offs
+
+| Stateless (this server)           | Stateful                              |
+| --------------------------------- | ------------------------------------- |
+| ✅ Works on serverless platforms   | ❌ Requires persistent infrastructure  |
+| ✅ Scales automatically            | ❌ Session affinity required           |
+| ❌ No persistent SSE notifications | ✅ Real-time server push              |
+| ✅ Simple deployment               | ❌ More complex state management       |
+
+## Client Compatibility
+
+### Cursor
+
+Cursor connects to this server but may show some warnings in debug logs:
+
+**"No stored tokens found"** - This is normal. Cursor attempts OAuth authentication first with all MCP servers. This server uses Bearer token authentication, not OAuth, so Cursor logs this message and falls back to header-based auth. The message is benign.
+
+**Connection appears to drop** - Cursor's UI may show the server disconnecting periodically. This is expected behavior for stateless MCP servers:
+- The server closes each SSE stream after responding
+- Cursor reconnects automatically (configured with 1-second retry interval)
+- Tool calls continue to work normally via POST requests
+
+This is a [known limitation](https://forum.cursor.com/t/the-streamable-http-mcp-server-connection-fails-after-100-seconds/116637) of stateless MCP servers with Cursor. The [MCP protocol](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1699) has proposals to improve polling support for stateless servers.
+
+### Claude Code
+
+Works without issues. Add via CLI:
+
+```bash
+claude mcp add --transport http cloudflare-api https://cloudflare-mcp.mattzcarey.workers.dev/mcp \
+  --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+```
+
+### Other Clients
+
+Any MCP client supporting Streamable HTTP transport should work. Pass your Cloudflare API token in the `Authorization: Bearer <token>` header.
+
 ## Development
 
 ```bash
